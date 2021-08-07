@@ -130,7 +130,7 @@ namespace DataNotIncluded
                 }
                 else
                 {
-                    title += successMsg;
+                    title += successMsg + dataExtractor.GetPATH();
                 }
                 ((ConfirmDialogScreen)GameScreenManager.Instance.StartScreen(
                     ScreenPrefabs.Instance.ConfirmDialogScreen.gameObject, null))

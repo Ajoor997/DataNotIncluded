@@ -10,19 +10,22 @@ namespace DataNotIncluded
     {
         private DataOject gameData;
         private readonly Dictionary<string, bool> extract;
+        private readonly string currSaveFilePath;
 
-        // err file is open
+        public string GetPATH()
+        {
+            return this.currSaveFilePath;
+        }
         public void WriteCsv(Dictionary<string, List<Dictionary<string, string>>> data) {
-            string currSaveFilePath = Path.GetDirectoryName(SaveLoader.GetActiveSaveFilePath()) + "\\data\\";
-            bool exists = System.IO.Directory.Exists(currSaveFilePath);
+            bool exists = System.IO.Directory.Exists(this.currSaveFilePath);
 
             if (!exists)
-                System.IO.Directory.CreateDirectory(currSaveFilePath);
+                System.IO.Directory.CreateDirectory(this.currSaveFilePath);
 
             foreach (var item in data)
             {
                 string fileName = "_" + item.Key + ".csv";
-                string filePath = Path.Combine(currSaveFilePath, Path.GetFileNameWithoutExtension(SaveLoader.GetActiveSaveFilePath()) +  fileName);
+                string filePath = Path.Combine(this.currSaveFilePath, Path.GetFileNameWithoutExtension(SaveLoader.GetActiveSaveFilePath()) +  fileName);
                 bool headerWritten = false;
                 StringBuilder header = new StringBuilder();
                 StringBuilder body = new StringBuilder();
@@ -144,7 +147,7 @@ namespace DataNotIncluded
         public CycleReport(DataOject gameData)
         {
             this.gameData = gameData;
-
+            this.currSaveFilePath = Path.GetDirectoryName(SaveLoader.GetActiveSaveFilePath()) + "\\data\\";
             //Config: let user select?
             this.extract = new Dictionary<string, bool>();
             this.extract.Clear();
