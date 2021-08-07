@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine.Events;
 using System;
-
+using UnityEngine;
 
 namespace DataNotIncluded
 {
@@ -100,14 +100,41 @@ namespace DataNotIncluded
                 reportDict = null;
                 // Class Init
                 CycleReport dataExtractor = new CycleReport(new DataOject(dataHeaders, dataRows));
+                string title = "Exporter Finished Executing\n";
+                string errTitle = "Error: Unkown\n";
+                string errMsg = "Unkown Error Occured!\n";
+                string successMsg = "data exported to game save file!\n";
+                bool err = false;
                 try
                 {
                     dataExtractor.ExtractData();
                 }
                 catch (Exception e)
                 {
-                    Debug.Log(e);
+                    err = true;
+                    Debug.Log("[DataNotIncluded][ERROR] : " + e);
+                    Debug.Log("[DataNotIncluded][ERROR_CODE] : " + e.HResult);
+                    if (e.HResult == -2147024864) // Sharing violation
+                    {
+                        errTitle = "Error: Sharing Vilation\n";
+                        errMsg = "Cannot write into an oppend file, Please Close all csv files!\n";
+                    }
                 }
+                if(err==true)
+                {
+                    title = title + errTitle + errMsg;
+                }
+                else
+                {
+                    title += successMsg;
+                }
+                ((ConfirmDialogScreen)GameScreenManager.Instance.StartScreen(
+                    ScreenPrefabs.Instance.ConfirmDialogScreen.gameObject, null))
+                    .PopupConfirmDialog(title, new System.Action(OnConfirm), null);
+            }
+            private static void OnConfirm()
+            {
+                Debug.Log("Finished Exporting");
             }
         }
     }

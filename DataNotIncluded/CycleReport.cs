@@ -140,13 +140,6 @@ namespace DataNotIncluded
             this.WriteCsv(generalData);
             generalData = null;
         }
-        
-        // GameDataTypes
-        //[ "DuplicantHeader", "CaloriesCreated", "StressDelta", "DiseaseAdded", "DiseaseStatus", "LevelUp",
-        //  "ToiletIncident", "ChoreStatus", "DomesticatedCritters", "WildCritters", "RocketsInFlight", "TimeSpentHeader", 
-        //"WorkTime", "TravelTime", "PersonalTime", "IdleTime", "BaseHeader","OxygenCreated", "EnergyCreated", "EnergyWasted",
-        //"ContaminatedOxygenToilet", "ContaminatedOxygenSublimation"]
-
      
         public CycleReport(DataOject gameData)
         {
