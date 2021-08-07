@@ -3,7 +3,11 @@ using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine.Events;
 using System;
-using UnityEngine;
+
+// NOTES : FUTURE RELEASE 
+// Configurable Options
+// generate .oni
+// what about Notes ?
 
 namespace DataNotIncluded
 {
