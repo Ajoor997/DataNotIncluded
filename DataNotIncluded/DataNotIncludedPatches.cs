@@ -2,6 +2,7 @@ using HarmonyLib;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine.Events;
+using System;
 
 
 namespace DataNotIncluded
@@ -44,8 +45,7 @@ namespace DataNotIncluded
                 // Init
                 Debug.Log("[DataNotIncluded] : Exporting Daily Reports");
                 List<DataRow> dataRows = new List<DataRow>();
-                DataHeader dataGroupHeaders = new DataHeader();
-                DataOject finalComposedData = new DataOject();
+                List<DataHeader> dataHeaders = new List<DataHeader>();
 
                 // GameObjects
                 List<ReportManager.DailyReport> reports = ReportManager.Instance.reports;
@@ -56,7 +56,9 @@ namespace DataNotIncluded
                 { 
                     ToolTip positiveTooltip = new ToolTip(reportGroup.Value.positiveTooltip, reportGroup.Value.posNoteOrder);
                     ToolTip negativeTooltip = new ToolTip(reportGroup.Value.negativeTooltip, reportGroup.Value.posNoteOrder);
-                    dataGroupHeaders = new DataHeader(reportGroup.Value.stringKey, positiveTooltip, negativeTooltip);
+                    DataHeader dataGroupHeaders = new DataHeader(reportGroup.Value.stringKey, positiveTooltip, negativeTooltip);
+
+                    dataHeaders.Add(dataGroupHeaders);
                 }
 
                 // Get Actual Data
@@ -95,13 +97,19 @@ namespace DataNotIncluded
                             dataRows.Add(dataRow);
                         });
                     }); 
-                    finalComposedData= new DataOject(dataGroupHeaders, dataRows);
                 }
                 reports = null;
                 reportDict = null;
                 // Class Init
-                CycleReport dataExtractor = new CycleReport(finalComposedData);
-                dataExtractor.ExtractData();
+                CycleReport dataExtractor = new CycleReport(new DataOject(dataHeaders, dataRows));
+                try
+                {
+                    dataExtractor.ExtractData();
+                }
+                catch (Exception e)
+                {
+                    Debug.Log(e);
+                }
             }
         }
     }
