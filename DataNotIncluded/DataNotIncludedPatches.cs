@@ -66,8 +66,6 @@ namespace DataNotIncluded
 
                     reports.ForEach(delegate (ReportManager.DailyReport currentCycleReport)
                     {
-                        Debug.Log("[DataNotIncluded] : DAY: " + currentCycleReport.day);
-
                         currentCycleReport.reportEntries.ForEach(delegate (ReportManager.ReportEntry entry) {
                             DataRow dataRow = new DataRow(currentCycleReport.day, entry.reportType, entry.Positive, entry.Negative, entry.Net);
 

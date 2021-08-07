@@ -1,14 +1,17 @@
 ﻿using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace DataNotIncluded
 {
     class CycleReport
     {
         private DataOject gameData;
-        private Dictionary<string, bool> extract;
+        private readonly Dictionary<string, bool> extract;
 
+        // err file is open
         public void WriteCsv(Dictionary<string, List<Dictionary<string, string>>> data) {
             string currSaveFilePath = Path.GetDirectoryName(SaveLoader.GetActiveSaveFilePath()) + "\\data\\";
             bool exists = System.IO.Directory.Exists(currSaveFilePath);
@@ -32,6 +35,10 @@ namespace DataNotIncluded
                         if (headerWritten == false)
                         {
                             header.Append(dict.Key);
+                            if (line.Count - 1 != index)
+                            {
+                                header.Append(",");
+                            }
                         }
                         body.Append(dict.Value);
                         if (line.Count-1 != index)
@@ -44,7 +51,11 @@ namespace DataNotIncluded
                     headerWritten = true;
                 });
                 header.Append("\n");
-                File.WriteAllText(filePath, body.ToString());
+                int finalFileSize = (header.ToString().Length + body.ToString().Length);
+                if (finalFileSize != 1)
+                {
+                    File.WriteAllText(filePath, header.ToString() + body.ToString());
+                }
             }
         }
 
@@ -89,14 +100,27 @@ namespace DataNotIncluded
                     List<Dictionary<string, string>> rawData = new List<Dictionary<string, string>>();
 
                     currDataRow.rowContexts.ForEach(delegate (Context currDataRowContext) {
+                        string contextUpdated = currDataRowContext.rowHeader;
 
-                        Dictionary<string, string> row = new Dictionary<string, string>();
-                       
-                        row.Add("Context", currDataRowContext.rowHeader);
-                        row.Add("Cycle", currDataRow.cycle.ToString());
-                        row.Add("Added", currDataRowContext.Positive.ToString());
-                        row.Add("Removed", currDataRowContext.Negative.ToString());
-                        row.Add("Net", currDataRowContext.Net.ToString());
+                        if (currDataRowContext.rowHeader.Contains("link"))
+                        {
+                            string pat = @"(.*)<.*>(.*)<.*>";
+                            Regex regX = new Regex(pat, RegexOptions.IgnoreCase);
+                            Match matchedCase = regX.Match(contextUpdated);
+                            if(matchedCase.Success==true)
+                            {
+                                contextUpdated = matchedCase.Groups[1].Value + matchedCase.Groups[2].Value;
+                            }
+                        }
+
+                        Dictionary<string, string> row = new Dictionary<string, string>
+                        {
+                            { "Context", contextUpdated },
+                            { "Cycle", currDataRow.cycle.ToString() },
+                            { "Added", currDataRowContext.Positive.ToString() },
+                            { "Removed", currDataRowContext.Negative.ToString() },
+                            { "Net", currDataRowContext.Net.ToString() }
+                        };
                         rawData.Add(row);
                         row = null;
                     });
@@ -106,7 +130,7 @@ namespace DataNotIncluded
                     }
                     else
                     {
-                        generalData[currDataRow.type.ToString() + "_EXPANDED"] = rawData;
+                        generalData[currDataRow.type.ToString() + "_EXPANDED"] = generalData[currDataRow.type.ToString() + "_EXPANDED"].Concat(rawData).ToList();
                     }
                     rawData = null;
                     rawDataGeneral = null;
