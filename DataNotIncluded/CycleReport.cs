@@ -1,283 +1,284 @@
 ﻿using System.Collections.Generic;
 using System.IO;
-using System.Text;
-using System.Linq;
 using System.Text.RegularExpressions;
+using System;
 
 namespace DataNotIncluded
 {
     class CycleReport
     {
-        private DataOject gameData;
-        private readonly Dictionary<string, bool> extract;
-        private readonly string currSaveFilePath;
+        private string currSaveFilePath;
+        private Dictionary<string,List<string>> csvFormatRaw;
+        private DataNotIncludedConfigs modConfig;
 
-        public string GetPATH()
+        public CycleReport(DataNotIncludedConfigs config)
         {
-            return this.currSaveFilePath;
-        }
-        public void WriteCsv(Dictionary<string, List<Dictionary<string, string>>> data) {
-            bool exists = System.IO.Directory.Exists(this.currSaveFilePath);
+            // Init
+            Debug.Log("[DataNotIncluded] : Processing Daily Reports v2");
+            this.csvFormatRaw = new Dictionary<string, List<string>>();
+            config.UpdateTypesDict();
+            this.modConfig = config;
+            // get CoreGame Object that contains the data
+            List<ReportManager.DailyReport> reports = ReportManager.Instance.reports;
+            // Get Actual Data
+            if (reports != null) { // Do if Not Empty
 
-            if (!exists)
-                System.IO.Directory.CreateDirectory(this.currSaveFilePath);
-
-            foreach (var item in data)
-            {
-                string fileName = "_" + item.Key + ".csv";
-                string filePath = Path.Combine(this.currSaveFilePath, Path.GetFileNameWithoutExtension(SaveLoader.GetActiveSaveFilePath()) +  fileName);
-                bool headerWritten = false;
-                StringBuilder header = new StringBuilder();
-                StringBuilder body = new StringBuilder();
-
-                item.Value.ForEach(delegate (Dictionary<string, string> line)
+               reports.ForEach(delegate (ReportManager.DailyReport currentCycleReport)
                 {
-                    int index = 0;
-                    foreach (var dict in line)
+                    ProcessData(currentCycleReport);
+                });
+            }
+            reports = null;
+        }
+        public void DestroyCycleReport()
+        {
+            this.csvFormatRaw.Clear();
+            this.csvFormatRaw = null;
+            this.currSaveFilePath = null;
+            this.modConfig = null;
+        }
+        public void UpdateDate() {
+            Debug.Log("[DataNotIncluded] : Updating Data");
+            List<ReportManager.DailyReport> reports = ReportManager.Instance.reports;
+            ReportManager.DailyReport todaysReport = reports[reports.Count - 1];
+            ProcessData(todaysReport);
+            reports = null;
+            todaysReport = null;
+        }
+        private void ProcessData(ReportManager.DailyReport currentCycleReport) {
+            string row;
+            string contextUpdated;
+            string sourceUpdated;
+            float value;
+            float added;
+            float removed;
+            currentCycleReport.reportEntries.ForEach(delegate (ReportManager.ReportEntry entry) {
+                if (this.modConfig.types.ContainsKey(entry.reportType.ToString()))
+                {
+                    if (this.modConfig.types[entry.reportType.ToString()] == true)
                     {
-                        if (headerWritten == false)
+                        if (this.modConfig.Totals)
                         {
-                            header.Append(dict.Key);
-                            if (line.Count - 1 != index)
+                            added = this.RemoveNegative(this.AdjustKprifix(entry.reportType.ToString(), this.RoundNess(entry.reportType.ToString(), entry.Positive)));
+                            removed = this.RemoveNegative(this.AdjustKprifix(entry.reportType.ToString(), this.RoundNess(entry.reportType.ToString(), entry.Negative)));
+                            value = this.RemoveNegative(this.AdjustKprifix(entry.reportType.ToString(), this.RoundNess(entry.reportType.ToString(), entry.Net)));
+                            // 	Cycle	Added	Removed	Net
+                            row = (currentCycleReport.day.ToString() + "," + added.ToString() + "," + removed.ToString() + "," + value.ToString());
+                            this.UpdateDictionary(entry.reportType.ToString(), row, "_TOTALS", "Cycle,Added,Removed,Net");
+                        }
+
+                        //ChekChilderns
+                        if (entry.HasContextEntries())
+                        {
+                            for (int index = 0; index < entry.contextEntries.size; index++)
                             {
-                                header.Append(",");
+                                added = this.RemoveNegative(this.AdjustKprifix(entry.reportType.ToString(), this.RoundNess(entry.reportType.ToString(), entry.contextEntries[index].Positive)));
+                                removed = this.RemoveNegative(this.AdjustKprifix(entry.reportType.ToString(), this.RoundNess(entry.reportType.ToString(), entry.contextEntries[index].Negative)));
+                                value = this.RemoveNegative(this.AdjustKprifix(entry.reportType.ToString(), this.RoundNess(entry.reportType.ToString(), entry.contextEntries[index].Net)));
+
+                                contextUpdated = entry.contextEntries[index].context;
+                                if (contextUpdated.Contains("link"))
+                                {
+                                    contextUpdated = getValueFromPattern(contextUpdated);
+                                }
+                                // Cycle    Context    Added  Removed  Net
+                                row = (currentCycleReport.day.ToString() + "," + contextUpdated + "," + added.ToString() + "," + removed.ToString() + "," + value.ToString());
+                                this.UpdateDictionary(entry.reportType.ToString(), row, "_EXPANDED", "Cycle,Context,Added,Removed,Net");
+
+                                // Get Corresponding Notes
+                                if (this.modConfig.ignoreNotes.Contains(entry.reportType.ToString()))
+                                {
+                                    entry.contextEntries[index].IterateNotes(delegate (ReportManager.ReportEntry.Note note)
+                                    {
+                                        value = this.AdjustKprifix(entry.reportType.ToString(), this.RoundNess(entry.reportType.ToString(), note.value));
+                                        sourceUpdated = note.note.ToString();
+                                        if (sourceUpdated.Contains("link"))
+                                        {
+                                            sourceUpdated = getValueFromPattern(sourceUpdated);
+                                        }
+                                    // Cycle Context Source  Value
+                                    row = (currentCycleReport.day.ToString() + "," + contextUpdated + "," + sourceUpdated + "," + value.ToString());
+                                        this.UpdateDictionary(entry.reportType.ToString(), row, "_NOTES", "Cycle,Context,Source,Value");
+                                    });
+                                }
                             }
                         }
-                        body.Append(dict.Value);
-                        if (line.Count-1 != index)
+                        // Get Corresponding Notes
+                        if (this.modConfig.Totals && this.modConfig.ignoreNotes.Contains(entry.reportType.ToString()))
                         {
-                            body.Append(",");
+                            entry.IterateNotes(delegate (ReportManager.ReportEntry.Note note)
+                            {
+                                value = this.AdjustKprifix(entry.reportType.ToString(), this.RoundNess(entry.reportType.ToString(), note.value));
+                                sourceUpdated = note.note.ToString();
+                                if (sourceUpdated.Contains("link"))
+                                {
+                                    sourceUpdated = getValueFromPattern(sourceUpdated);
+                                }
+                                // Cycle    Source  Value
+                                row = (currentCycleReport.day.ToString() + "," + sourceUpdated + "," + value.ToString());
+                                this.UpdateDictionary(entry.reportType.ToString(), row, "_NOTES_TOTALS", "Cycle,Context,Value");
+                            });
                         }
-                        index++;
                     }
-                    body.Append("\n");
-                    headerWritten = true;
-                });
-                header.Append("\n");
-                int finalFileSize = (header.ToString().Length + body.ToString().Length);
-                if (finalFileSize != 1)
-                {
-                    File.WriteAllText(filePath, header.ToString() + body.ToString());
                 }
+
+            });
+        }
+        private float RemoveNegative(float value) {
+            if(value<0 && this.modConfig.Negatives) {
+                return (value*-1);
+            }
+            else {
+                return value;
             }
         }
-
-        public void Debugger()
+        private float AdjustKprifix(string type, float value)
         {
-        }
-        public void ExtractData()
-        {
-            // Handling Headers
-            this.gameData.dataHeader.ForEach(delegate (DataHeader currHeader) 
-            {
-                //Debug.Log(currHeader.header);
-            
-            });
-
-            // Handling Rows
-            Dictionary<string,List<Dictionary<string, string>>> generalData = new Dictionary<string,List<Dictionary<string, string>>>();
-            generalData.Clear();
-            
-
-            this.gameData.dataRows.ForEach(delegate (DataRow currDataRow)
-            {
-               
-                if (this.extract[currDataRow.type.ToString()]==true)
-                {
-                    Dictionary<string, string> rawDataGeneral = new Dictionary<string, string>();
-                    rawDataGeneral.Clear();
-
-                    if (generalData.ContainsKey(currDataRow.type.ToString()) == false)
-                    {
-                        generalData.Add(currDataRow.type.ToString(), new List<Dictionary<string, string>>());
-                    }
-
-                    // General
-                    rawDataGeneral.Add("Cycle", currDataRow.cycle.ToString());
-                    rawDataGeneral.Add("Added", currDataRow.added.ToString());
-                    rawDataGeneral.Add("Removed", currDataRow.removed.ToString());
-                    rawDataGeneral.Add("Net", currDataRow.net.ToString());
-                    generalData[currDataRow.type.ToString()].Add(rawDataGeneral);
-
-                    //Specific
-                    List<Dictionary<string, string>> rawData = new List<Dictionary<string, string>>();
-
-                    currDataRow.rowContexts.ForEach(delegate (Context currDataRowContext) {
-                        string contextUpdated = currDataRowContext.rowHeader;
-
-                        if (currDataRowContext.rowHeader.Contains("link"))
-                        {
-                            string pat = @"(.*)<.*>(.*)<.*>";
-                            Regex regX = new Regex(pat, RegexOptions.IgnoreCase);
-                            Match matchedCase = regX.Match(contextUpdated);
-                            if(matchedCase.Success==true)
-                            {
-                                contextUpdated = matchedCase.Groups[1].Value + matchedCase.Groups[2].Value;
-                            }
-                        }
-
-                        Dictionary<string, string> row = new Dictionary<string, string>
-                        {
-                            { "Context", contextUpdated },
-                            { "Cycle", currDataRow.cycle.ToString() },
-                            { "Added", currDataRowContext.Positive.ToString() },
-                            { "Removed", currDataRowContext.Negative.ToString() },
-                            { "Net", currDataRowContext.Net.ToString() }
-                        };
-                        rawData.Add(row);
-                        row = null;
-                    });
-                    //SAVE
-                    if (generalData.ContainsKey(currDataRow.type.ToString() + "_EXPANDED") == false) {
-                        generalData.Add(currDataRow.type.ToString() + "_EXPANDED", rawData);
-                    }
-                    else
-                    {
-                        generalData[currDataRow.type.ToString() + "_EXPANDED"] = generalData[currDataRow.type.ToString() + "_EXPANDED"].Concat(rawData).ToList();
-                    }
-                    rawData = null;
-                    rawDataGeneral = null;
+            int k = 1000;
+            if (type=="OxygenCreated") {
+                if (this.modConfig.KPrefix == false) {
+                    value *= k;
                 }
-            });
-            // WRITE
-            this.WriteCsv(generalData);
-            generalData = null;
+            }
+            else if (type == "EnergyCreated" || type == "EnergyWasted" || type == "CaloriesCreated")
+            {
+                if (this.modConfig.KPrefix == true) {
+                    value /= k;
+                }
+            }
+            return value;
         }
-     
-        public CycleReport(DataOject gameData)
+        private float RoundNess(string type, float value)
         {
-            this.gameData = gameData;
-            this.currSaveFilePath = Path.GetDirectoryName(SaveLoader.GetActiveSaveFilePath()) + "\\data\\";
-            //Config: let user select?
-            this.extract = new Dictionary<string, bool>();
-            this.extract.Clear();
-            this.extract.Add("DuplicantHeader", false);
-            this.extract.Add("CaloriesCreated", true);
-            this.extract.Add("StressDelta", true);
-            this.extract.Add("DiseaseAdded", true);
-            this.extract.Add("DiseaseStatus", true);
-            this.extract.Add("LevelUp", true);
-            this.extract.Add("ToiletIncident", false);
-            this.extract.Add("ChoreStatus", true);
-            this.extract.Add("DomesticatedCritters", true);
-            this.extract.Add("WildCritters", true);
-            this.extract.Add("RocketsInFlight", false);
-            this.extract.Add("TimeSpentHeader", false);
-            this.extract.Add("WorkTime", true);
-            this.extract.Add("TravelTime", true);
-            this.extract.Add("PersonalTime", true);
-            this.extract.Add("IdleTime", true);
-            this.extract.Add("BaseHeader", false);
-            this.extract.Add("OxygenCreated", true);
-            this.extract.Add("EnergyCreated", true);
-            this.extract.Add("EnergyWasted", true);
-            this.extract.Add("ContaminatedOxygenToilet", false);
-            this.extract.Add("ContaminatedOxygenSublimation", false);
+            if (type == "OxygenCreated" || type == "EnergyCreated" || type == "EnergyWasted" || type == "CaloriesCreated" || 
+                type == "IdleTime" || type == "PersonalTime" || type == "TravelTime" || type == "WorkTime") { 
+                int digits = this.modConfig.RoundDigits;
+                return (float)Math.Round(value, digits);
+            }
+            return value;
         }
-    }
-
-    public struct Context {
-
-        public string rowHeader;
-        public float Positive;
-        public float Negative;
-        public float Net;
-        public List<Note> ContextNotes;
-
-        public void AddNote(Note value)
-        {
-            this.ContextNotes.Add(value);
+        private void CreateDataFolder() {
+            this.currSaveFilePath = Path.GetDirectoryName(SaveLoader.GetActiveSaveFilePath()) + "\\data_v2\\";
+            //Create Date File If Needed
+            if (!System.IO.Directory.Exists(this.currSaveFilePath))
+            {
+                System.IO.Directory.CreateDirectory(this.currSaveFilePath);
+            }
         }
+        public void WriteCsv(){
+            this.CreateDataFolder();
+            foreach (var item in this.csvFormatRaw)
+            {
+                string fileName = "_" + item.Key + ".csv";
+                string filePath = Path.Combine(this.currSaveFilePath, Path.GetFileNameWithoutExtension(SaveLoader.GetActiveSaveFilePath()) + fileName);
 
-        public Context(string rowHeader, float Positive, float Negative, float Net)
-        {
-            this.rowHeader = rowHeader;
-            this.Positive = Positive;
-            this.Negative = Negative;
-            this.Net = Net;
-            this.ContextNotes = new List<Note>();
+                TextWriter tw = new StreamWriter(filePath);
+
+                foreach (string line in item.Value)
+                {
+                    tw.WriteLine(line);
+                }
+                tw.Close();
+            }
+            return;
         }
-    }
+        public void WriteXML() {
+            this.CreateDataFolder();
+            foreach (var item in this.csvFormatRaw)
+            {
+                string fileName = "_" + item.Key + ".xml";
+                string filePath = Path.Combine(this.currSaveFilePath, Path.GetFileNameWithoutExtension(SaveLoader.GetActiveSaveFilePath()) + fileName);
+                string headers = item.Value[0];
 
-    public struct Note
-    {
-        public string label;
-        public float value;
-
-        public Note(string label, float value)
-        {
-            this.label = label;
-            this.value = value;
-        }
-    }
-
-    public struct ToolTip
-    {
-        public string stringValue;
-        public ReportManager.ReportEntry.Order order;
-        public ToolTip(string stringValue, ReportManager.ReportEntry.Order order)
-        {
-            this.stringValue = stringValue;
-            this.order = order;
-        }
-    }
-    public struct DataOject
-    {
-        public List<DataHeader> dataHeader;
-        public List<DataRow> dataRows;
-
-
-        public DataOject(List<DataHeader> dataHeader, List<DataRow> dataRows)
-        {
-            this.dataHeader = dataHeader;
-            this.dataRows = dataRows;
-        }
-    }
-
-    public struct DataRow {
-
-        public ReportManager.ReportType type;
-        public float added;
-        public float removed;
-        public float net;
-        public int cycle;
-        public List<Context> rowContexts;
-        public List<Note> notes;
-
-
-        public void AddRowContext(Context value)
-        {
-            this.rowContexts.Add(value);
-        }
-        public void AddNote(Note value)
-        {
-            this.notes.Add(value);
+                TextWriter tw = new StreamWriter(filePath);
+                tw.WriteLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+                tw.WriteLine("\t<" + item.Key + ">");
+                foreach (string line in item.Value.GetRange(1, item.Value.Count - 1)) {
+                    tw.WriteLine("\t\t<CycleData>");
+                    int index = 0;
+                    foreach (string cell in line.Split(',')) {
+                        string header = headers.Split(',')[index];
+                        tw.WriteLine("\t\t\t<" + header + ">"+ cell + "</"+ header + ">");
+                        index += 1;
+                    }          
+                    tw.WriteLine("\t\t</CycleData>");
+                }
+                tw.WriteLine("\t</" + item.Key + ">");
+                tw.Close();
+            }
+            return;
         }
 
-        public DataRow(int cycle, ReportManager.ReportType type, float added, float removed, float net)
-        {
-            this.cycle = cycle;
-            this.type = type;
-            this.added = added;
-            this.removed = removed;
-            this.rowContexts = new List<Context>();
-            this.notes = new List<Note>();
-            this.net = net;
-        }    
-    }
+        public void WriteJSON() {
+            this.CreateDataFolder();
+            foreach (var item in this.csvFormatRaw)
+            {
+                string fileName = "_" + item.Key + ".json";
+                string filePath = Path.Combine(this.currSaveFilePath, Path.GetFileNameWithoutExtension(SaveLoader.GetActiveSaveFilePath()) + fileName);
+                string  headers = item.Value[0];
 
-    public struct DataHeader
-    {
-        public string header;
-        public ToolTip positiveTooltip;
-        public ToolTip negativeTooltip;
-
-        public DataHeader(string header, ToolTip positiveTooltip, ToolTip negativeTooltip)
-        {
-            this.header = header;
-            this.positiveTooltip = positiveTooltip;
-            this.negativeTooltip = negativeTooltip;
+                TextWriter tw = new StreamWriter(filePath);
+                tw.WriteLine("{\n\t\"" + item.Key.Split('_')[0] + "\":{");
+                int id = 0;
+                foreach (string line in item.Value.GetRange(1, item.Value.Count-1))
+                {
+                    tw.WriteLine("\t\t\"" + id.ToString() + "\":{");
+                    int index = 0;
+                    int size = line.Split(',').Length;
+                    string comma;
+                    foreach (string cell in line.Split(','))
+                    {
+                        string header = headers.Split(',')[index];
+                        size -= 1;
+                        if (size != 0) {
+                            comma = ",";
+                        }
+                        else {
+                            comma = "";
+                        }
+                        tw.WriteLine("\t\t\t\"" + header + "\":\"" + cell + "\""+ comma);
+                        index += 1;
+                    }
+                    if (id == item.Value.Count-1) {
+                        tw.WriteLine("\t\t}");
+                    }
+                    else {
+                        tw.WriteLine("\t\t},");
+                    }
+                    id += 1;
+                }
+                tw.WriteLine("\t}\n}");
+                tw.Close();
+            }
+            return;
         }
 
+        public string GetPATH() {
+            return this.currSaveFilePath;
+        }
+
+        private string getValueFromPattern(string codedStr) {
+            string pat = @"(.*)<.*>(.*)<.*>";
+            Regex regX = new Regex(pat, RegexOptions.IgnoreCase);
+            Match matchedCase = regX.Match(codedStr);
+            if (matchedCase.Success == true)
+            {
+                codedStr = matchedCase.Groups[1].Value + matchedCase.Groups[2].Value;
+            }
+            return codedStr;
+        }
+        private void UpdateDictionary(string key , string data, string prefix, string headers) {
+            if (csvFormatRaw.ContainsKey(key + prefix) == false) {
+                //Append data to headers
+                List<string> items = new List<string>();
+                items.Add(headers);
+                items.Add(data);
+                this.csvFormatRaw.Add(key + prefix, items);
+            }
+            else {
+                this.csvFormatRaw[key + prefix].Add(data);
+            }
+            return;
+        }
     }
 }
